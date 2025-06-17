@@ -16,9 +16,9 @@ typedef struct {
 
 nivel_agua nv = {20, 80, false};
 
-void init_bot(void);
-void gpio_irq_handler(uint gpio, uint32_t events);
-int64_t botao_pressionado(alarm_id_t, void *user_data);
+void init_bot(void); // Inicialização dos botões
+void gpio_irq_handler(uint gpio, uint32_t events);  // Tratamento de interrupção
+int64_t botao_pressionado(alarm_id_t, void *user_data); // Ativo da função após os 2 segundos
 
 int main(){
     stdio_init_all();
@@ -37,27 +37,28 @@ void init_bot(void){
         gpio_pull_up(i);
     }
 }
-
+/* Não houve necessidade de utilizar o debounce no botão A, pois o mesmo é tratado com um alarme de 2 segundos para a sua real ativação.
+   O botão B foi tratado com um debounce de 300ms.
+   Ao ser pressionado, o botão A ativa o alarme e se soltar antes dos 2 segundos, o alarme é desativado.
+   **** Botão A: Reseta os valores limítrofes da bomba. (Esses valores podem ser configurados)
+   **** Botao B: Ativa e desativa a bomba manualmente. (É só associar a ativação com a booleana)
+   E por fim, os printf são só para verificação de funcionamento... pode remover ao finalizar.  */
 void gpio_irq_handler(uint gpio, uint32_t events){
-    uint64_t current_time_a = to_ms_since_boot(get_absolute_time());
-    uint64_t current_time_b = to_ms_since_boot(get_absolute_time());
-    static uint64_t last_time_a = 0;
-    static uint64_t last_time_b = 0;
+    uint64_t current_time = to_ms_since_boot(get_absolute_time());
+    static uint64_t last_time = 0;
     static volatile bool estado_a = false;
-        if (gpio == botao_a && !estado_a && (current_time_a - last_time_a > 300)) {
+        if (gpio == botao_a && !estado_a) {
             nv.alarm_a = add_alarm_in_ms(2000, botao_pressionado, NULL, false);
             estado_a = true;
-            last_time_a = current_time_a;
-            } else if (estado_a && (events & GPIO_IRQ_EDGE_RISE)) {
+            } else if (gpio == botao_a && estado_a && (events & GPIO_IRQ_EDGE_RISE)) {
                 cancel_alarm(nv.alarm_a);
                 estado_a = false;
-            } else if (gpio == botao_b && (current_time_b - last_time_b > 300)) {
+            } else if (gpio == botao_b && (current_time - last_time > 300)) {
                 nv.estado_bomba = !nv.estado_bomba;
-                last_time_b = current_time_b;
+                last_time = current_time;
                 printf("Botão B pressionado \n");
             }
 }
-
 
 int64_t botao_pressionado(alarm_id_t, void *user_data) {
     if(gpio_get(botao_a) == 0){
