@@ -18,7 +18,11 @@
 #define endereco 0x3C
 #define buzzer_a 21
 #define matriz_led_pins 25
+#define interrupcao(bot) gpio_set_irq_enabled_with_callback(bot, GPIO_IRQ_EDGE_FALL, true, &gpio_irq_handler)
 uint8_t slice = 0;
+uint8_t min = 20;
+uint8_t max = 80;
+
 
 typedef struct pixeis {
     uint8_t cor1, cor2, cor3;
@@ -39,6 +43,7 @@ void matriz_init(uint pin);
 void setled(const uint index, const uint8_t r, const uint8_t g, const uint8_t b);
 void matriz(uint8_t r, uint8_t g, uint8_t b);
 void display(void);
+void gpio_irq_handler(uint gpio, uint32_t events); 
 void init_i2c(void);
 void init_oled(void);
 void oled_display(ssd1306_t* ssd, bool cor);
@@ -51,6 +56,7 @@ int main(){
     pwm_off();
     matriz_init(matriz_led);
     init_i2c();
+    interrupcao(botao_a);
 
     while (true) {
         printf("testando\n");
@@ -131,6 +137,25 @@ void display(void){
         }
     sleep_us(100); 
 }
+
+void gpio_irq_handler(uint gpio, uint32_t events){
+    uint64_t current_time = to_ms_since_boot(get_absolute_time());
+    static uint64_t last_time = 0;
+    uint64_t tempo_pressionado = 0;
+    if (current_time - last_time > 300){
+        if (gpio == botao_a) {
+            tempo_pressionado = to_ms_since_boot(get_absolute_time());
+            if (tempo_pressionado == 2000) {
+                min = 20;
+                max = 80;
+                printf("Botão A pressionado por 2 segundos!\n");
+                }
+            }
+    last_time = current_time;
+        }
+}
+
+
 
 void init_i2c(void){
     i2c_init(I2C_PORT, 400*1000);
