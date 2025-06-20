@@ -1,33 +1,126 @@
 #include <stdio.h>
 #include "pico/stdlib.h"
 #include "pico/time.h"
+#include "pico/cyw43_arch.h"
+#include "ssd1306.h"
+#include "lwipopts.h"
+#include <string.h>
 
 #define botao_a 5
 #define botao_b 6
 #define green_led 11
 #define interrupcao(bot) gpio_set_irq_enabled_with_callback(bot, GPIO_IRQ_EDGE_FALL | GPIO_IRQ_EDGE_RISE, true, &gpio_irq_handler)
 
+#define WIFI_SSID ""
+#define WIFI_PASSWORD ""
+
+#define I2C_PORT_DISP i2c1
+#define I2C_SDA_DISP 14
+#define I2C_SCL_DISP 15
+#define endereco 0x3C
+
 typedef struct {
     uint8_t min;
     uint8_t max;
     volatile bool estado_bomba;
+    uint8_t nivel_atual;
     absolute_time_t alarm_a;
 } nivel_agua;
 
-nivel_agua nv = {20, 80, false};
+nivel_agua nv = {20, 80, false, 30, 0};
 
 void init_bot(void); // Inicialização dos botões
 void gpio_irq_handler(uint gpio, uint32_t events);  // Tratamento de interrupção
 int64_t botao_pressionado(alarm_id_t, void *user_data); // Ativo da função após os 2 segundos
+uint8_t xcenter_pos(char *text); // Função para centralizar o texto no display
 
 int main(){
     stdio_init_all();
     init_bot();
     interrupcao(botao_a);
     interrupcao(botao_b);
+
+    i2c_init(I2C_PORT_DISP, 400 * 1000);
+    gpio_set_function(I2C_SDA_DISP, GPIO_FUNC_I2C);
+    gpio_set_function(I2C_SCL_DISP, GPIO_FUNC_I2C);
+    gpio_pull_up(I2C_SDA_DISP);
+    gpio_pull_up(I2C_SCL_DISP);
+
+    ssd1306_t ssd;
+    ssd1306_init(&ssd, WIDTH, HEIGHT, false, endereco, I2C_PORT_DISP);
+    ssd1306_config(&ssd);
+    ssd1306_fill(&ssd, false);
+    ssd1306_draw_string(&ssd, "Iniciando Wi-Fi", 0, 0);
+    char aguarde[] = "Aguarde...";
+    ssd1306_draw_string(&ssd, aguarde, xcenter_pos(aguarde), 30);    
+    ssd1306_send_data(&ssd);
+
+    if (cyw43_arch_init())
+    {
+        ssd1306_fill(&ssd, false);
+        ssd1306_draw_string(&ssd, "WiFi => FALHA", xcenter_pos("WiFi => FALHA"), 0);
+        ssd1306_send_data(&ssd);
+        return 1;
+    }
+
+    cyw43_arch_enable_sta_mode();
+    if (cyw43_arch_wifi_connect_timeout_ms(WIFI_SSID, WIFI_PASSWORD, CYW43_AUTH_WPA2_AES_PSK, 10000))
+    {
+        ssd1306_fill(&ssd, false);
+        ssd1306_draw_string(&ssd, "WiFi => ERRO", 0, 0);
+        ssd1306_send_data(&ssd);
+        return 1;
+    }
+
+    uint8_t *ip = (uint8_t *)&(cyw43_state.netif[0].ip_addr.addr);
+    char ip_str[24];
+    snprintf(ip_str, sizeof(ip_str), "%d.%d.%d.%d", ip[0], ip[1], ip[2], ip[3]);
+
+    ssd1306_fill(&ssd, false);
+    ssd1306_draw_string(&ssd, "WiFi => OK", 0, 0);
+    ssd1306_draw_string(&ssd, ip_str, 0, 10);
+    ssd1306_send_data(&ssd);
+
+    char str_x[14];
+    char str_y[14];
+    char str_pb[14];
+    bool cor = true;
+
+    char ip_text[] = "IP:";
+    strcat(ip_text, ip_str);
+
     while (true) {
+        sprintf(str_x, "Nivel Min: %d", nv.min);    
+        sprintf(str_y, "Nivel Max: %d", nv.max);    
+        sprintf(str_pb, "Agua: %d", nv.nivel_atual);
+
+        ssd1306_fill(&ssd, !cor);               
+        ssd1306_rect(&ssd, 0, 0, 127, 63, cor, !cor);
+        ssd1306_draw_string(&ssd, str_pb, 2, 2);
+        ssd1306_draw_string(&ssd, str_x, 2, 10);
+        ssd1306_draw_string(&ssd, str_y, 2, 18);
+
+        if (nv.nivel_atual >= nv.max) {
+            ssd1306_draw_string(&ssd, "Bomba: OFF", 2, 26);
+        } else if (nv.nivel_atual < nv.min) {
+            ssd1306_draw_string(&ssd, "Bomba: ON", 2, 26);
+        } else {
+            ssd1306_draw_string(&ssd, "Bomba: OFF", 2, 26);
+        }
+
+        ssd1306_hline(&ssd, 0, 127, 40, cor);
+
+        ssd1306_draw_string(&ssd, ip_text, xcenter_pos(ip_text), 42);
+
+        ssd1306_draw_string(&ssd, "EmbarcaTech", xcenter_pos("EmbarcaTech"), 50); // Desenha o IP
+
+        ssd1306_send_data(&ssd); 
+
         sleep_ms(1000);
     }
+
+    cyw43_arch_deinit();
+    return 0;
 }
 
 void init_bot(void){
@@ -67,4 +160,8 @@ int64_t botao_pressionado(alarm_id_t, void *user_data) {
         printf("Botão A pressionado por 2 segundos!\n");
     }
     return 0;
+}
+
+uint8_t xcenter_pos(char* text) {
+    return (WIDTH - 8 * strlen(text)) / 2; // Calcula a posição centralizada
 }
