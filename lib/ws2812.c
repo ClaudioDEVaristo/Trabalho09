@@ -7,30 +7,18 @@
 
 #define WS2812_PIN 7
 
+//PIO pio = pio0; // Instância do PIO utilizada
+//uint sm0 = 0;   // Número da state machine utilizada
 uint32_t led_matrix[25] = {0}; // Buffer para armazenar o estado de cada LED (5x5)
 
 // Buffer para padrões de desenhos
 const uint32_t numbers[][25] = {
-    // 0 - ºC
-    1, 1, 1, 0, 0,
-    0, 0, 1, 0, 0,
-    1, 1, 1, 0, 0,
-    1, 1, 0, 0, 0,
-    0, 0, 0, 1, 1,
-
-    // 1 - água
+    // 0 - água
     0, 1, 1, 1, 0,
     1, 1, 1, 1, 1,
     1, 1, 1, 1, 1,
     0, 1, 1, 1, 0,
     0, 0, 1, 0, 0,
-    
-    // 2 - oxigênio
-    0, 0, 0, 1, 1,
-    1, 1, 0, 0, 0,
-    0, 0, 1, 0, 0,
-    0, 0, 0, 1, 1,
-    1, 1, 0, 0, 0,
 };
 
 const uint32_t colors[][3] = {
@@ -52,7 +40,25 @@ const char *color_names[] = {
     "verde", "azul", "roxo", "cinza", "branco", "rosa"
 };
 
+/**
+ * @brief Inicializa o PIO e a state machine para controlar a matriz de LEDs WS2812.
+ * 
+ * @param pio Instância do PIO utilizada.
+ * @param sm Número da state machine.
+ */
+void ws2812_init(PIO pio, uint sm) {
+    uint offset = pio_add_program(pio, &pio_matrix_program);
+    pio_matrix_program_init(pio, sm, offset, WS2812_PIN);
+    clear_matrix(pio, sm);
+}
 
+/**
+ * @brief Envia um pixel para a matriz de LEDs WS2812.
+ * 
+ * @param pixel_grb Cor do pixel em formato GRB (Green, Red, Blue).
+ * 
+ * @details A função utiliza a state machine do PIO para enviar o valor do pixel.
+ */
 static inline void put_pixel(uint32_t pixel_grb) {
     pio_sm_put_blocking(pio0, 0, pixel_grb << 8u);
 }

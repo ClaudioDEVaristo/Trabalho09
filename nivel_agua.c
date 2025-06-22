@@ -44,6 +44,10 @@ int main(){
     gpio_init(green_led);
     gpio_set_dir(green_led, GPIO_OUT);
 
+    PIO pio = pio0;
+    uint sm = 0;
+    ws2812_init(pio, sm);
+
     i2c_init(I2C_PORT_DISP, 400 * 1000);
     gpio_set_function(I2C_SDA_DISP, GPIO_FUNC_I2C);
     gpio_set_function(I2C_SCL_DISP, GPIO_FUNC_I2C);
@@ -128,6 +132,8 @@ int main(){
         ssd1306_draw_string(&ssd, "EmbarcaTech", xcenter_pos("EmbarcaTech"), 50); // Desenha o IP
 
         ssd1306_send_data(&ssd); 
+
+        set_pattern(pio0, 0, 0, "azul");
 
         sleep_ms(1000);
     }
