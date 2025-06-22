@@ -40,6 +40,9 @@ int main(){
     interrupcao(botao_a);
     interrupcao(botao_b);
 
+    gpio_init(green_led);
+    gpio_set_dir(green_led, GPIO_OUT);
+
     i2c_init(I2C_PORT_DISP, 400 * 1000);
     gpio_set_function(I2C_SDA_DISP, GPIO_FUNC_I2C);
     gpio_set_function(I2C_SCL_DISP, GPIO_FUNC_I2C);
@@ -102,11 +105,20 @@ int main(){
 
         if (nv.nivel_atual >= nv.max) {
             ssd1306_draw_string(&ssd, "Bomba: OFF", 2, 26);
+            nv.estado_bomba = false;
+            printf("Bomba desligada, nivel maximo atingido.\n");
         } else if (nv.nivel_atual < nv.min) {
             ssd1306_draw_string(&ssd, "Bomba: ON", 2, 26);
+            printf("Bomba ligada, nivel minimo atingido.\n");
+            nv.estado_bomba = true;
         } else {
+            //if (nv.estado_bomba) continue; // Se a bomba já estiver ligada, não faz nada
             ssd1306_draw_string(&ssd, "Bomba: OFF", 2, 26);
+            printf("Bomba desligada, nivel dentro dos limites.\n");
+            nv.estado_bomba = false;
         }
+
+        gpio_put(green_led, nv.estado_bomba); // Liga/desliga o LED verde conforme o estado da bomba
 
         ssd1306_hline(&ssd, 0, 127, 40, cor);
 
@@ -148,6 +160,7 @@ void gpio_irq_handler(uint gpio, uint32_t events){
                 estado_a = false;
             } else if (gpio == botao_b && (current_time - last_time > 300)) {
                 nv.estado_bomba = !nv.estado_bomba;
+                gpio_put(green_led, nv.estado_bomba);
                 last_time = current_time;
                 printf("Botão B pressionado \n");
             }
