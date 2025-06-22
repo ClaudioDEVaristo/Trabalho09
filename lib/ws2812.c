@@ -7,8 +7,6 @@
 
 #define WS2812_PIN 7
 
-//PIO pio = pio0; // Instância do PIO utilizada
-//uint sm0 = 0;   // Número da state machine utilizada
 uint32_t led_matrix[25] = {0}; // Buffer para armazenar o estado de cada LED (5x5)
 
 // Buffer para padrões de desenhos
@@ -23,7 +21,7 @@ const uint32_t numbers[][25] = {
 
 const uint32_t colors[][3] = {
     {0, 0, 0},      // Preto
-    {5, 2, 1},    // Marrom
+    {5, 2, 1},      // Marrom
     {10, 0, 0},     // Vermelho
     {5, 1, 0},      // Laranja
     {10, 5, 0},     // Amarelo

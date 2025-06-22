@@ -5,9 +5,6 @@
 #include "hardware/pio.h"
 #include "hardware/clocks.h"
 
-//extern PIO pio;
-//extern uint sm;
-
 void ws2812_init(PIO pio, uint sm);
 static inline void put_pixel(uint32_t pixel_grb);
 static inline uint32_t urgb_u32(char *color_name);

@@ -31,10 +31,11 @@ typedef struct {
 
 nivel_agua nv = {20, 80, false, 30, 0};
 
-void init_bot(void); // Inicialização dos botões
-void gpio_irq_handler(uint gpio, uint32_t events);  // Tratamento de interrupção
-int64_t botao_pressionado(alarm_id_t, void *user_data); // Ativo da função após os 2 segundos
-uint8_t xcenter_pos(char *text); // Função para centralizar o texto no display
+void init_bot(void);
+void gpio_irq_handler(uint gpio, uint32_t events);
+int64_t botao_pressionado(alarm_id_t, void *user_data);
+uint8_t xcenter_pos(char *text);
+
 
 int main(){
     stdio_init_all();
@@ -149,6 +150,10 @@ int main(){
     return 0;
 }
 
+
+/**
+ * @brief Inicializa os botões A e B.
+ */
 void init_bot(void){
     for(uint8_t i = 5; i < 7; i++){
         gpio_init(i);
@@ -156,13 +161,15 @@ void init_bot(void){
         gpio_pull_up(i);
     }
 }
+
+
 /* Não houve necessidade de utilizar o debounce no botão A, pois o mesmo é tratado com um alarme de 2 segundos para a sua real ativação.
    O botão B foi tratado com um debounce de 300ms.
    Ao ser pressionado, o botão A ativa o alarme e se soltar antes dos 2 segundos, o alarme é desativado.
    **** Botão A: Reseta os valores limítrofes da bomba. (Esses valores podem ser configurados)
    **** Botao B: Ativa e desativa a bomba manualmente. (É só associar a ativação com a booleana)
    E por fim, os printf são só para verificação de funcionamento... pode remover ao finalizar.  */
-void gpio_irq_handler(uint gpio, uint32_t events){
+void gpio_irq_handler(uint gpio, uint32_t events) {
     uint64_t current_time = to_ms_since_boot(get_absolute_time());
     static uint64_t last_time = 0;
     static volatile bool estado_a = false;
@@ -180,6 +187,10 @@ void gpio_irq_handler(uint gpio, uint32_t events){
             }
 }
 
+
+/**
+ * @brief Função chamada após 2 segundos de pressionamento do botão A.
+ */
 int64_t botao_pressionado(alarm_id_t, void *user_data) {
     if(gpio_get(botao_a) == 0){
         nv.min = 20;
@@ -189,6 +200,13 @@ int64_t botao_pressionado(alarm_id_t, void *user_data) {
     return 0;
 }
 
+
+/**
+ * @brief Calcula a posição centralizada do texto no display.
+ * 
+ * @param text Texto a ser centralizado.
+ * @return Posição X centralizada.
+ */
 uint8_t xcenter_pos(char* text) {
     return (WIDTH - 8 * strlen(text)) / 2; // Calcula a posição centralizada
 }
