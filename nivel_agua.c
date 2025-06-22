@@ -3,6 +3,7 @@
 #include "pico/time.h"
 #include "pico/cyw43_arch.h"
 #include "ssd1306.h"
+#include "ws2812.h"
 #include "lwipopts.h"
 #include <string.h>
 
