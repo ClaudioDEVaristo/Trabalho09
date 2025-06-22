@@ -4,6 +4,7 @@
 #include "pico/cyw43_arch.h"
 #include "ssd1306.h"
 #include "ws2812.h"
+#include "buzzer.h"
 #include "lwipopts.h"
 #include <string.h>
 
@@ -43,6 +44,9 @@ int main(){
 
     gpio_init(green_led);
     gpio_set_dir(green_led, GPIO_OUT);
+
+    // Configura o buzzer com PWM
+    buzzer_setup_pwm(BUZZER_PIN, 4000);
 
     PIO pio = pio0;
     uint sm = 0;
@@ -124,6 +128,9 @@ int main(){
         }
 
         gpio_put(green_led, nv.estado_bomba); // Liga/desliga o LED verde conforme o estado da bomba
+        if (nv.estado_bomba) {
+            buzzer_play(BUZZER_PIN, 1, 700, 100); // Toca o buzzer se a bomba estiver ligada
+        }
 
         ssd1306_hline(&ssd, 0, 127, 40, cor);
 

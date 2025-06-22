@@ -13,13 +13,15 @@ add_executable(${PROJECT_NAME}
         nivel_agua.c
         lib/ssd1306.c
         lib/ws2812.c
+        lib/buzzer.c
         )
 
 target_link_libraries(${PROJECT_NAME} 
-        pico_stdlib 
+        pico_stdlib
         hardware_i2c
         hardware_adc
-        hardware_pio        
+        hardware_pio
+        hardware_pwm
         pico_cyw43_arch_lwip_threadsafe_background
         )
 
