@@ -1,0 +1,224 @@
+<!DOCTYPE html>
+<html lang="pt-br">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Controle de Nível</title>
+    <style>
+        :root {
+            --bg-color: #1a1a2e;
+            --primary-color: #16213e;
+            --secondary-color: #0f3460;
+            --font-color: #e94560;
+            --text-color: #dcdcdc;
+            --water-color: #3498db;
+        }
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, 'Open Sans', 'Helvetica Neue', sans-serif;
+            background-color: var(--bg-color);
+            color: var(--text-color);
+            margin: 0;
+            padding: 20px;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            min-height: 100vh;
+        }
+        .container {
+            width: 100%;
+            max-width: 500px;
+            background-color: var(--primary-color);
+            padding: 25px;
+            border-radius: 15px;
+            box-shadow: 0 10px 30px rgba(0,0,0,0.4);
+            text-align: center;
+        }
+        h1 {
+            color: var(--font-color);
+            margin-bottom: 20px;
+        }
+        .tanque-container {
+            background-color: var(--secondary-color);
+            border-radius: 5px;
+            margin-bottom: 20px;
+            position: relative;
+            height: 200px;
+        }
+        .tanque-nivel {
+            background-color: var(--water-color);
+            height: 100%;
+            width: 100%;
+            position: absolute;
+            bottom: 0;
+            left: 0;
+            border-radius: 5px;
+            transform-origin: bottom;
+            transition: transform 0.5s ease-out;
+        }
+        .nivel-texto {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            font-size: 3em;
+            font-weight: bold;
+            color: white;
+            text-shadow: 2px 2px 5px rgba(0,0,0,0.5);
+            z-index: 20;
+        }
+        .limite {
+            position: absolute;
+            left: 0;
+            width: 100%;
+            height: 0;
+            border-top: 2px dashed var(--font-color);
+            z-index: 10;
+            transition: bottom 0.5s ease-out;
+        }
+        .limite span {
+            position: absolute;
+            top: 4px;
+            right: 5px;
+            font-size: 0.9em;
+            font-weight: bold;
+            color: var(--font-color);
+            text-shadow: 1px 1px 3px var(--bg-color);
+        }
+        .status-bomba {
+            font-size: 1.2em; padding: 10px; border-radius: 5px;
+            margin-bottom: 20px; font-weight: bold; transition: all 0.3s;
+        }
+        .ligada { background-color: #27ae60; }
+        .desligada { background-color: #c0392b; }
+        form { display: flex; flex-direction: column; gap: 15px; }
+        .form-group { display: flex; justify-content: space-between; align-items: center; }
+        label { font-size: 1.1em; }
+        input[type="number"] {
+            width: 80px; padding: 8px; border-radius: 5px; border: none;
+            background-color: var(--secondary-color); color: var(--text-color);
+            font-size: 1.1em; text-align: center;
+        }
+        button {
+            padding: 12px; border: none; border-radius: 5px; background-color: var(--font-color);
+            color: white; font-size: 1.1em; font-weight: bold; cursor: pointer; transition: background-color 0.2s;
+        }
+        button:hover { background-color: #d63447; }
+        #msg-feedback {
+            margin-top: 10px; font-weight: bold; color: #27ae60; height: 20px; transition: opacity 0.5s;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>💧 Controle de Nível</h1>
+        <div class="tanque-container">
+            <div class="nivel-texto" id="nivel-atual-texto">--%</div>
+            <div class="tanque-nivel" id="nivel-visual"></div>
+            <div class="limite" id="limite-max"><span id="limite-max-texto">MAX: --%</span></div>
+            <div class="limite" id="limite-min"><span id="limite-min-texto">MIN: --%</span></div>
+        </div>
+        <div class="status-bomba" id="status-bomba">Conectando...</div>
+        <form id="form-limites">
+            <div class="form-group">
+                <label for="limite_min_input">Nível Mínimo (%):</label>
+                <input type="number" id="limite_min_input" name="limite_min" min="0" max="100" required>
+            </div>
+            <div class="form-group">
+                <label for="limite_max_input">Nível Máximo (%):</label>
+                <input type="number" id="limite_max_input" name="limite_max" min="0" max="100" required>
+            </div>
+            <button type="submit">Atualizar Limites</button>
+        </form>
+        <div id="msg-feedback"></div>
+    </div>
+    <script>
+        document.addEventListener('DOMContentLoaded', () => {
+            const nivelVisual = document.getElementById('nivel-visual');
+            const nivelTexto = document.getElementById('nivel-atual-texto');
+            const statusBomba = document.getElementById('status-bomba');
+            const formLimites = document.getElementById('form-limites');
+            const msgFeedback = document.getElementById('msg-feedback');
+            const limiteMinTexto = document.getElementById('limite-min-texto');
+            const limiteMaxTexto = document.getElementById('limite-max-texto');
+            const limiteMinLine = document.getElementById('limite-min');
+            const limiteMaxLine = document.getElementById('limite-max');
+            const minInput = document.getElementById('limite_min_input');
+            const maxInput = document.getElementById('limite_max_input');
+
+            // Função para buscar dados REAIS da placa
+            async function fetchData() {
+                try {
+                    // MUDANÇA AQUI: URL alterada para .json
+                    const response = await fetch('/api/data.json');
+                    if (!response.ok) {
+                        throw new Error('Erro de rede');
+                    }
+                    const data = await response.json();
+                    atualizarUI(data);
+                } catch (error) {
+                    console.error("Falha ao buscar dados:", error);
+                    statusBomba.textContent = 'Erro de Conexão';
+                    statusBomba.className = 'status-bomba desligada';
+                }
+            }
+            
+            function atualizarUI(data) {
+                // As chaves do JSON (ex: 'nivel_atual') devem corresponder ao que o C enviar
+                nivelVisual.style.transform = `scaleY(${data.nivel_atual / 100})`;
+                nivelTexto.textContent = `${data.nivel_atual}%`;
+                statusBomba.textContent = data.estado_bomba ? 'Bomba Ligada' : 'Bomba Desligada';
+                statusBomba.className = 'status-bomba ' + (data.estado_bomba ? 'ligada' : 'desligada');
+                limiteMinTexto.textContent = `MIN: ${data.min}%`;
+                limiteMaxTexto.textContent = `MAX: ${data.max}%`;
+                limiteMinLine.style.bottom = `${data.min}%`;
+                limiteMaxLine.style.bottom = `${data.max}%`;
+
+                // Atualiza os campos do formulário apenas se não estiverem em foco
+                if(document.activeElement !== minInput) minInput.value = data.min;
+                if(document.activeElement !== maxInput) maxInput.value = data.max;
+            }
+
+            // Função para enviar os novos limites para a placa
+            formLimites.addEventListener('submit', async (e) => {
+                e.preventDefault();
+                // MUDANÇA AQUI: Enviando como FormData, que o httpd do pico entende melhor
+                const formData = new URLSearchParams();
+                formData.append('min', minInput.value);
+                formData.append('max', maxInput.value);
+
+                if (parseInt(minInput.value) >= parseInt(maxInput.value)) {
+                    msgFeedback.style.color = '#e74c3c';
+                    msgFeedback.textContent = 'O nível mínimo deve ser menor que o máximo.';
+                    setTimeout(() => { msgFeedback.textContent = ''; }, 3000);
+                    return;
+                }
+                
+                try {
+                    const response = await fetch('/api/limites.cgi', { // MUDANÇA AQUI: URL alterada para .cgi
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+                        body: formData.toString()
+                    });
+
+                    if (response.ok) {
+                        msgFeedback.style.color = '#27ae60';
+                        msgFeedback.textContent = 'Limites atualizados!';
+                        await fetchData();
+                    } else {
+                        throw new Error('Falha ao enviar limites');
+                    }
+                } catch (error) {
+                    console.error("Erro ao enviar formulário:", error);
+                    msgFeedback.style.color = '#e74c3c';
+                    msgFeedback.textContent = 'Erro ao enviar dados.';
+                }
+
+                setTimeout(() => { msgFeedback.textContent = ''; }, 3000);
+            });
+
+            setInterval(fetchData, 2000);
+            fetchData();
+        });
+    </script>
+</body>
+</html>
