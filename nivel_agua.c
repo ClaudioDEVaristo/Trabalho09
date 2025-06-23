@@ -228,6 +228,24 @@ uint8_t xcenter_pos(char* text) {
     return (WIDTH - 8 * strlen(text)) / 2; // Calcula a posição centralizada
 }
 
+/**
+ * @brief Função de callback chamada após o envio de dados HTTP via TCP.
+ * 
+ * Esta função é responsável por gerenciar o envio progressivo de dados HTTP.
+ * Ela mantém o controle da quantidade de bytes enviados e, quando todos os dados
+ * forem transmitidos, fecha a conexão TCP e libera os recursos alocados.
+ * Se ainda houver dados a serem enviados, a função envia o próximo chunk
+ * de até 1024 bytes.
+ * 
+ * @param arg Ponteiro para a estrutura http_state associada à conexão
+ * @param tpcb Ponteiro para o bloco de controle de protocolo TCP
+ * @param len Quantidade de bytes que foram enviados na última operação
+ * 
+ * @return ERR_OK Se o processamento foi concluído com sucesso
+ * 
+ * @note A função libera automaticamente a memória alocada para http_state
+ *       quando a transmissão é concluída.
+ */
 static err_t http_sent(void *arg, struct tcp_pcb *tpcb, u16_t len)
 {
     struct http_state *hs = (struct http_state *)arg;
@@ -251,6 +269,19 @@ static err_t http_sent(void *arg, struct tcp_pcb *tpcb, u16_t len)
     return ERR_OK;
 }
 
+/**
+ * @brief Função de callback para receber dados HTTP através de uma conexão TCP.
+ * 
+ * Esta função é chamada quando um pacote TCP é recebido para uma conexão HTTP.
+ * Processa os dados recebidos no buffer de pacote e realiza as operações
+ * apropriadas com base no conteúdo da requisição HTTP.
+ * 
+ * @param arg Ponteiro para argumentos adicionais passados durante o registro do callback
+ * @param tpcb Ponteiro para o bloco de controle de protocolo TCP
+ * @param p Ponteiro para o buffer de pacote recebido (NULL se a conexão foi fechada)
+ * @param err Código de erro recebido do lwIP
+ * @return err_t ERR_OK se processado com sucesso, ou outro código de erro
+ */
 static err_t http_recv(void *arg, struct tcp_pcb *tpcb, struct pbuf *p, err_t err)
 {
     if (!p)
@@ -346,12 +377,41 @@ static err_t http_recv(void *arg, struct tcp_pcb *tpcb, struct pbuf *p, err_t er
     return ERR_OK;
 }
 
+/**
+ * @brief Função de callback para novas conexões TCP
+ * 
+ * Esta função é chamada quando uma nova conexão TCP é estabelecida.
+ * É usada para processar novas conexões de clientes no sistema de monitoramento 
+ * de nível de água.
+ * 
+ * @param arg Ponteiro para argumentos definidos pelo usuário (não utilizado)
+ * @param newpcb Ponteiro para o bloco de controle de protocolo (PCB) da nova conexão
+ * @param err Código de erro da operação de aceitação
+ * 
+ * @return err_t Código de erro indicando o resultado do processamento da conexão
+ *         - ERR_OK se a conexão foi processada com sucesso
+ *         - Outros códigos de erro em caso de falha
+ */
 static err_t connection_callback(void *arg, struct tcp_pcb *newpcb, err_t err)
 {
     tcp_recv(newpcb, http_recv);
     return ERR_OK;
 }
 
+/**
+ * @brief Inicializa e inicia o servidor HTTP para monitoramento do nível de água
+ * 
+ * Esta função configura e lança o servidor HTTP embutido que fornece
+ * a interface web para monitoramento e controle dos níveis de água. O servidor
+ * gerencia conexões de entrada e processa requisições HTTP relacionadas ao
+ * sistema de nível de água.
+ * 
+ * @note Esta função é estática e só acessível dentro deste arquivo
+ * @note Esta função não retorna até que o servidor seja explicitamente parado
+ *       ou encontre um erro fatal
+ * 
+ * @return Nenhum
+ */
 static void start_http_server(void)
 {
     struct tcp_pcb *pcb = tcp_new();
