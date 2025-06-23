@@ -10,6 +10,7 @@
 #include "lwip/tcp.h"
 #include <stdlib.h>
 #include "html_body.h"
+#include "hardware/adc.h"
 
 #define botao_a 5
 #define botao_b 6
@@ -23,6 +24,9 @@
 #define I2C_SDA_DISP 14
 #define I2C_SCL_DISP 15
 #define endereco 0x3C
+
+#define POTENCIOMETRO_PIN 28
+#define ADC_MAX 900 // Valor máximo do ADC para o potenciômetro
 
 typedef struct {
     uint8_t min;
@@ -66,6 +70,9 @@ int main(){
     PIO pio = pio0;
     uint sm = 0;
     ws2812_init(pio, sm);
+
+    adc_init();
+    adc_gpio_init(POTENCIOMETRO_PIN);
 
     i2c_init(I2C_PORT_DISP, 400 * 1000);
     gpio_set_function(I2C_SDA_DISP, GPIO_FUNC_I2C);
@@ -119,6 +126,13 @@ int main(){
 
     while (true) {
         cyw43_arch_poll();
+
+        adc_select_input(2);
+        uint16_t adc_value = adc_read();
+
+        printf("ADC Value: %d\n", adc_value);
+
+        nv.nivel_atual = (adc_value * 100) / ADC_MAX; // Converte o valor do ADC para porcentagem
 
         sprintf(str_x, "Nivel Min: %d%%", nv.min);    
         sprintf(str_y, "Nivel Max: %d%%", nv.max);    
