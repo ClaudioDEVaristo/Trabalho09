@@ -7,6 +7,9 @@
 #include "buzzer.h"
 #include "lwipopts.h"
 #include <string.h>
+#include "lwip/tcp.h"
+#include <stdlib.h>
+#include "html_body.h"
 
 #define botao_a 5
 #define botao_b 6
@@ -31,11 +34,22 @@ typedef struct {
 
 nivel_agua nv = {20, 80, false, 30, 0};
 
+struct http_state
+{
+    char response[8192];
+    size_t len;
+    size_t sent;
+};
+
 void init_bot(void);
 void gpio_irq_handler(uint gpio, uint32_t events);
 int64_t botao_pressionado(alarm_id_t, void *user_data);
 uint8_t xcenter_pos(char *text);
 
+static err_t http_sent(void *arg, struct tcp_pcb *tpcb, u16_t len);
+static err_t http_recv(void *arg, struct tcp_pcb *tpcb, struct pbuf *p, err_t err);
+static err_t connection_callback(void *arg, struct tcp_pcb *newpcb, err_t err);
+static void start_http_server(void);
 
 int main(){
     stdio_init_all();
@@ -94,6 +108,7 @@ int main(){
     ssd1306_draw_string(&ssd, ip_str, 0, 10);
     ssd1306_send_data(&ssd);
 
+    start_http_server();
     char str_x[14];
     char str_y[14];
     char str_pb[14];
@@ -103,9 +118,11 @@ int main(){
     strcat(ip_text, ip_str);
 
     while (true) {
-        sprintf(str_x, "Nivel Min: %d", nv.min);    
-        sprintf(str_y, "Nivel Max: %d", nv.max);    
-        sprintf(str_pb, "Agua: %d", nv.nivel_atual);
+        cyw43_arch_poll();
+
+        sprintf(str_x, "Nivel Min: %d%%", nv.min);    
+        sprintf(str_y, "Nivel Max: %d%%", nv.max);    
+        sprintf(str_pb, "Agua: %d%%", nv.nivel_atual);
 
         ssd1306_fill(&ssd, !cor);               
         ssd1306_rect(&ssd, 0, 0, 127, 63, cor, !cor);
@@ -209,4 +226,206 @@ int64_t botao_pressionado(alarm_id_t, void *user_data) {
  */
 uint8_t xcenter_pos(char* text) {
     return (WIDTH - 8 * strlen(text)) / 2; // Calcula a posição centralizada
+}
+
+/**
+ * @brief Função de callback chamada após o envio de dados HTTP via TCP.
+ * 
+ * Esta função é responsável por gerenciar o envio progressivo de dados HTTP.
+ * Ela mantém o controle da quantidade de bytes enviados e, quando todos os dados
+ * forem transmitidos, fecha a conexão TCP e libera os recursos alocados.
+ * Se ainda houver dados a serem enviados, a função envia o próximo chunk
+ * de até 1024 bytes.
+ * 
+ * @param arg Ponteiro para a estrutura http_state associada à conexão
+ * @param tpcb Ponteiro para o bloco de controle de protocolo TCP
+ * @param len Quantidade de bytes que foram enviados na última operação
+ * 
+ * @return ERR_OK Se o processamento foi concluído com sucesso
+ * 
+ * @note A função libera automaticamente a memória alocada para http_state
+ *       quando a transmissão é concluída.
+ */
+static err_t http_sent(void *arg, struct tcp_pcb *tpcb, u16_t len)
+{
+    struct http_state *hs = (struct http_state *)arg;
+    hs->sent += len;
+
+    if (hs->sent >= hs->len) {
+        tcp_close(tpcb);
+        free(hs);
+        return ERR_OK;
+    }
+
+    size_t remaining = hs->len - hs->sent;
+    size_t chunk = remaining > 1024 ? 1024 : remaining;
+    err_t err = tcp_write(tpcb, hs->response + hs->sent, chunk, TCP_WRITE_FLAG_COPY);
+    if (err == ERR_OK) {
+        tcp_output(tpcb);
+    } else {
+        printf("Erro ao enviar chunk restante: %d\n", err);
+    }
+
+    return ERR_OK;
+}
+
+/**
+ * @brief Função de callback para receber dados HTTP através de uma conexão TCP.
+ * 
+ * Esta função é chamada quando um pacote TCP é recebido para uma conexão HTTP.
+ * Processa os dados recebidos no buffer de pacote e realiza as operações
+ * apropriadas com base no conteúdo da requisição HTTP.
+ * 
+ * @param arg Ponteiro para argumentos adicionais passados durante o registro do callback
+ * @param tpcb Ponteiro para o bloco de controle de protocolo TCP
+ * @param p Ponteiro para o buffer de pacote recebido (NULL se a conexão foi fechada)
+ * @param err Código de erro recebido do lwIP
+ * @return err_t ERR_OK se processado com sucesso, ou outro código de erro
+ */
+static err_t http_recv(void *arg, struct tcp_pcb *tpcb, struct pbuf *p, err_t err)
+{
+    if (!p)
+    {
+        tcp_close(tpcb);
+        return ERR_OK;
+    }
+
+    char *req = (char *)p->payload;
+    struct http_state *hs = malloc(sizeof(struct http_state));
+    if (!hs)
+    {
+        pbuf_free(p);
+        tcp_close(tpcb);
+        return ERR_MEM;
+    }
+    hs->sent = 0;
+
+    if (strstr(req, "GET /api/data")) {
+        char json_payload[128];
+        int json_len = snprintf(json_payload, sizeof(json_payload),
+            "{\"min\":%d,\"max\":%d,\"nivel_atual\":%d,\"estado_bomba\":%s}\r\n",
+            nv.min, nv.max, nv.nivel_atual, nv.estado_bomba ? "true" : "false");
+        hs->len = snprintf(hs->response, sizeof(hs->response),
+            "HTTP/1.1 200 OK\r\n"
+            "Content-Type: application/json\r\n"
+            "Content-Length: %d\r\n"
+            "Connection: close\r\n"
+            "\r\n"
+            "%s",
+            json_len, json_payload);
+
+    }
+    else if (strstr(req, "POST /api/limites"))
+    {
+        char *min_str = strstr(req, "min=");
+        char *max_str = strstr(req, "max=");
+        if (min_str && max_str)
+        {
+            min_str += 4; // Pular "min="
+            max_str += 4; // Pular "max="
+
+            nv.min = atoi(min_str);
+            nv.max = atoi(max_str);
+
+            if (nv.min >= nv.max)
+            {
+                hs->len = snprintf(hs->response, sizeof(hs->response),
+                    "HTTP/1.1 400 Bad Request\r\n"
+                    "Content-Type: text/plain\r\n"
+                    "Content-Length: 0\r\n"
+                    "Connection: close\r\n"
+                    "\r\n");
+            }
+        }
+    }
+    else
+    {
+       size_t html_len = strlen(HTML_BODY);
+
+        int hdr_len = snprintf(hs->response, sizeof(hs->response),
+            "HTTP/1.1 200 OK\r\n"
+            "Content-Type: text/html\r\n"
+            "Content-Length: %zu\r\n"
+            "Connection: close\r\n"
+            "\r\n", html_len);
+
+        memcpy(hs->response + hdr_len, HTML_BODY, html_len);
+
+        hs->len = hdr_len + html_len;
+        hs->sent = 0;
+
+        tcp_arg(tpcb, hs);
+        tcp_sent(tpcb, http_sent); // chama http_sent() após cada envio
+
+        // envia apenas o primeiro pedaço (até 1024 bytes)
+        size_t chunk = hs->len > 1024 ? 1024 : hs->len;
+        tcp_write(tpcb, hs->response, chunk, TCP_WRITE_FLAG_COPY);
+        tcp_output(tpcb);
+        hs->sent = chunk;
+
+        pbuf_free(p);
+        return ERR_OK;
+    }
+
+    tcp_arg(tpcb, hs);
+    tcp_sent(tpcb, http_sent);
+
+    tcp_write(tpcb, hs->response, hs->len, TCP_WRITE_FLAG_COPY);
+    tcp_output(tpcb);
+
+    pbuf_free(p);
+    return ERR_OK;
+}
+
+/**
+ * @brief Função de callback para novas conexões TCP
+ * 
+ * Esta função é chamada quando uma nova conexão TCP é estabelecida.
+ * É usada para processar novas conexões de clientes no sistema de monitoramento 
+ * de nível de água.
+ * 
+ * @param arg Ponteiro para argumentos definidos pelo usuário (não utilizado)
+ * @param newpcb Ponteiro para o bloco de controle de protocolo (PCB) da nova conexão
+ * @param err Código de erro da operação de aceitação
+ * 
+ * @return err_t Código de erro indicando o resultado do processamento da conexão
+ *         - ERR_OK se a conexão foi processada com sucesso
+ *         - Outros códigos de erro em caso de falha
+ */
+static err_t connection_callback(void *arg, struct tcp_pcb *newpcb, err_t err)
+{
+    tcp_recv(newpcb, http_recv);
+    return ERR_OK;
+}
+
+/**
+ * @brief Inicializa e inicia o servidor HTTP para monitoramento do nível de água
+ * 
+ * Esta função configura e lança o servidor HTTP embutido que fornece
+ * a interface web para monitoramento e controle dos níveis de água. O servidor
+ * gerencia conexões de entrada e processa requisições HTTP relacionadas ao
+ * sistema de nível de água.
+ * 
+ * @note Esta função é estática e só acessível dentro deste arquivo
+ * @note Esta função não retorna até que o servidor seja explicitamente parado
+ *       ou encontre um erro fatal
+ * 
+ * @return Nenhum
+ */
+static void start_http_server(void)
+{
+    struct tcp_pcb *pcb = tcp_new();
+    if (!pcb)
+    {
+        printf("Erro ao criar PCB TCP\n");
+        return;
+    }
+    if (tcp_bind(pcb, IP_ADDR_ANY, 80) != ERR_OK)
+    {
+        printf("Erro ao ligar o servidor na porta 80\n");
+        return;
+    }
+    pcb = tcp_listen(pcb);
+    tcp_accept(pcb, connection_callback);
+    printf("Servidor HTTP rodando na porta 80...\n");
 }
