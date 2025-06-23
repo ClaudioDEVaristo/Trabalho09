@@ -129,6 +129,8 @@ int main(){
         adc_select_input(2);
         uint16_t adc_value = adc_read();
 
+        printf("ADC Value: %d\n", adc_value);
+
         nv.nivel_atual = (adc_value * 100) / 4095; // Converte o valor do ADC para porcentagem
 
         sprintf(str_x, "Nivel Min: %d%%", nv.min);    
