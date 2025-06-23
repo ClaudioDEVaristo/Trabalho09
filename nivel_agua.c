@@ -17,20 +17,22 @@
 #define green_led 11
 #define interrupcao(bot) gpio_set_irq_enabled_with_callback(bot, GPIO_IRQ_EDGE_FALL | GPIO_IRQ_EDGE_RISE, true, &gpio_irq_handler)
 
-#define WIFI_SSID ""
-#define WIFI_PASSWORD ""
+#define WIFI_SSID "Crau crau do mal"
+#define WIFI_PASSWORD "23092003"
 
 #define I2C_PORT_DISP i2c1
 #define I2C_SDA_DISP 14
 #define I2C_SCL_DISP 15
-#define rele 17
+#define rele 8
 #define endereco 0x3C
 
 #define valor_min 20
 #define valor_max 80
 
 #define POTENCIOMETRO_PIN 28
-#define ADC_MAX 900 // Valor máximo do ADC para o potenciômetro
+#define ADC_MAX_LIM 1000
+#define ADC_MAX 800 // Valor máximo do ADC para o potenciômetro
+#define ADC_MIN 120
 
 typedef struct {
     uint8_t min;
@@ -67,6 +69,8 @@ int main(){
 
     gpio_init(green_led);
     gpio_set_dir(green_led, GPIO_OUT);
+    gpio_init(rele);
+    gpio_set_dir(rele, GPIO_OUT);
 
     // Configura o buzzer com PWM
     buzzer_setup_pwm(BUZZER_PIN, 4000);
@@ -131,9 +135,14 @@ int main(){
 
         uint16_t adc_value = media(2);
 
-        // printf("ADC Value: %d\n", adc_value); // Para depuração, pode ser removido.
+        printf("ADC Value: %d\n", adc_value); // Para depuração, pode ser removido.
 
-        nv.nivel_atual = (uint8_t)((uint32_t)adc_value * 100 / ADC_MAX);
+        if (adc_value >= ADC_MAX_LIM) {
+            nv.nivel_atual = 100;
+        } else {
+            nv.nivel_atual = (uint8_t)(((adc_value - ADC_MIN) * 100) / (ADC_MAX));
+        }
+
         // 160 ~ 250 min
         //  987 ~ 1076 max
         sprintf(str_x, "Nivel Min: %d%%", nv.min);    
@@ -163,7 +172,7 @@ int main(){
         }
 
         gpio_put(green_led, nv.estado_bomba); // Liga/desliga o LED verde conforme o estado da bomba
-        gpio_put(rele, nv.estado_bomba); // Liga/desliga o relé conforme o estado da bomba
+        gpio_put(rele, !nv.estado_bomba); // Liga/desliga o relé conforme o estado da bomba
 
         ssd1306_hline(&ssd, 0, 127, 40, cor);
         ssd1306_draw_string(&ssd, ip_text, xcenter_pos(ip_text), 42);
