@@ -51,6 +51,7 @@ struct http_state{
 void init_bot(void);
 void gpio_irq_handler(uint gpio, uint32_t events);
 int64_t botao_pressionado(alarm_id_t, void *user_data);
+uint16_t media(uint8_t input);
 uint8_t xcenter_pos(char *text);
 
 static err_t http_sent(void *arg, struct tcp_pcb *tpcb, u16_t len);
@@ -128,13 +129,13 @@ int main(){
     while (true) {
         cyw43_arch_poll();
 
-        adc_select_input(2);
-        uint16_t adc_value = adc_read();
+        uint16_t adc_value = media(2);
 
-         // printf("ADC Value: %d\n", adc_value); // Para depuração, pode ser removido.
+        // printf("ADC Value: %d\n", adc_value); // Para depuração, pode ser removido.
 
-        nv.nivel_atual = (adc_value * 100) / ADC_MAX; // Converte o valor do ADC para porcentagem
-
+        nv.nivel_atual = (uint8_t)((uint32_t)adc_value * 100 / ADC_MAX);
+        // 160 ~ 250 min
+        //  987 ~ 1076 max
         sprintf(str_x, "Nivel Min: %d%%", nv.min);    
         sprintf(str_y, "Nivel Max: %d%%", nv.max);    
         sprintf(str_pb, "Agua: %d%%", nv.nivel_atual);
@@ -231,6 +232,16 @@ int64_t botao_pressionado(alarm_id_t, void *user_data) {
         nv.max = valor_max;
     }
     return 0;
+}
+
+uint16_t media(uint8_t input){
+    uint16_t media_adc = 0;
+    for(uint8_t i = 0; i < 10; i++){
+        adc_select_input(input);
+        sleep_us(2);
+        media_adc += adc_read();
+    }
+return media_adc / 10;
 }
 
 /**
