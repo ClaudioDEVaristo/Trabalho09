@@ -131,14 +131,18 @@ int main(){
         ssd1306_draw_string(&ssd, str_y, 2, 18);
 
         if (nv.nivel_atual >= nv.max) {
-            ssd1306_draw_string(&ssd, "Bomba: OFF", 2, 26);
             nv.estado_bomba = false;
             buzzer_play(BUZZER_PIN, 3, 1000, 1000);
             printf("Bomba desligada, nivel maximo atingido.\n");
         } else if (nv.nivel_atual < nv.min) {
-            ssd1306_draw_string(&ssd, "Bomba: ON", 2, 26);
             printf("Bomba ligada, nivel minimo atingido.\n");
             nv.estado_bomba = true;
+        }
+
+        if (nv.estado_bomba) {
+            ssd1306_draw_string(&ssd, "Bomba: ON", 2, 26);
+        } else {
+            ssd1306_draw_string(&ssd, "Bomba: OFF", 2, 26);
         }
 
         gpio_put(green_led, nv.estado_bomba); // Liga/desliga o LED verde conforme o estado da bomba
