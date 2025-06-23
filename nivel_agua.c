@@ -34,19 +34,139 @@ typedef struct {
 nivel_agua nv = {20, 80, false, 30, 0};
 
 const char HTML_BODY[] =
-    "<!DOCTYPE html>"
-"<html lang='pt-br'>"
-"<head>"
-"<meta charset='UTF-8'>"
-"<meta name='viewport' content='width=device-width, initial-scale=1.0'>"
-"<title>Controle de Nível</title>"
-"<style>:root{--bg-color:#1a1a2e;--primary-color:#16213e;--secondary-color:#0f3460;--font-color:#e94560;--text-color:#dcdcdc;--water-color:#3498db;} body{font-family:-apple-system,BlinkMacSystemFont,'SegoeUI',Roboto,Oxygen,Ubuntu,Cantarell,'OpenSans','HelveticaNeue',sans-serif;background-color:var(--bg-color);color:var(--text-color);margin:0;padding:20px;display:flex;justify-content:center;align-items:center;min-height:100vh;} .container{width:100%;max-width:500px;background-color:var(--primary-color);padding:25px;border-radius:15px;box-shadow:010px30pxrgba(0,0,0,0.4);text-align:center;} h1{color:var(--font-color);margin-bottom:20px;} .tanque-container{background-color:var(--secondary-color);border-radius:5px;margin-bottom:20px;position:relative;height:200px;} .tanque-nivel{background-color:var(--water-color);height:100%;width:100%;position:absolute;bottom:0;left:0;border-radius:5px;transform-origin:bottom;transition:transform 0.5s ease-out;} .nivel-texto{position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);font-size:3em;font-weight:bold;color:white;text-shadow:2px2px5pxrgba(0,0,0,0.5);z-index:20;} .limite{position:absolute;left:0;width:100%;height:0;border-top:2pxdashedvar(--font-color);z-index:10;transition:bottom 0.5 sease-out;} .limite span{position:absolute;top:4px;right:5px;font-size:0.9em;font-weight:bold;color:var(--font-color);text-shadow:1px1px3pxvar(--bg-color);} .status-bomba{font-size:1.2em;padding:10px;border-radius:5px;margin-bottom:20px;font-weight:bold;transition:all 0.3s;} .ligada{background-color:#27ae60;} .desligada{background-color:#c0392b;} form{display:flex;flex-direction:column;gap:15px;} .form-group{display:flex;justify-content:space-between;align-items:center;} label{font-size:1.1em;} input[type='number']{width:80px;padding:8px;border-radius:5px;border:none;background-color:var(--secondary-color);color:var(--text-color);font-size:1.1em;text-align:center;} button{padding:12px;border:none;border-radius:5px;background-color:var(--font-color);color:white;font-size:1.1em;font-weight:bold;cursor:pointer;transition:background-color 0.2s;} button:hover{background-color:#d63447;} #msg-feedback{margin-top:10px;font-weight:bold;color:#27ae60;height:20px;transition:opacity 0.5s;}</style>"
-"</head>"
-"<body>"
-"<div class=container><h1>💧 Controle de Nível</h1><div class=tanque-container><div class=nivel-texto id=nivel-atual-texto>--%</div><div class=tanque-nivel id=nivel-visual></div><div class=limite id=limite-max><span id=limite-max-texto>MAX: --%</span></div><div class=limite id=limite-min><span id=limite-min-texto>MIN: --%</span></div></div><div class=status-bomba id=status-bomba>Conectando...</div><form id=form-limites><div class=form-group><label for=limite_min_input>Nível Mínimo (%):</label> <input id=limite_min_input max=100 min=0 name=limite_min required type=number></div><div class=form-group><label for=limite_max_input>Nível Máximo (%):</label> <input id=limite_max_input max=100 min=0 name=limite_max required type=number></div><button type=submit>Atualizar Limites</button></form><div id=msg-feedback></div></div>"
-"<script>const nivelVisual = document.getElementById('nivel-visual'); const nivelTexto = document.getElementById('nivel-atual-texto'); const statusBomba = document.getElementById('status-bomba'); const formLimites = document.getElementById('form-limites'); const msgFeedback = document.getElementById('msg-feedback'); const limiteMinTexto = document.getElementById('limite-min-texto'); const limiteMaxTexto = document.getElementById('limite-max-texto'); const limiteMinLine = document.getElementById('limite-min'); const limiteMaxLine = document.getElementById('limite-max'); const minInput = document.getElementById('limite_min_input'); const maxInput = document.getElementById('limite_max_input'); async function fetchData() { try { const response = await fetch('/api/data'); if (!response.ok) { throw new Error('Erro de rede'); } const data = await response.json(); atualizarUI(data); } catch (error) { console.error('Falha ao buscar dados:', error); statusBomba.textContent = 'Erro de Conexão'; statusBomba.className = 'status-bomba desligada'; } } function atualizarUI(data) { nivelVisual.style.transform = 'scaleY(' + data.nivel_atual / 100 + ')'; nivelTexto.textContent = data.nivel_atual + '%%'; statusBomba.textContent = data.estado_bomba ? 'Bomba Ligada' : 'Bomba Desligada'; statusBomba.className = 'status-bomba ' + (data.estado_bomba ? 'ligada' : 'desligada'); limiteMinTexto.textContent = 'MIN: ' + data.min + '%%'; limiteMaxTexto.textContent = 'MAX: ' + data.max + '%%'; limiteMinLine.style.bottom = data.min + '%%'; limiteMaxLine.style.bottom = data.max + '%%'; if(document.activeElement !== minInput) minInput.value = data.min; if(document.activeElement !== maxInput) maxInput.value = data.max; } formLimites.addEventListener('submit', async (e) => { e.preventDefault(); const formData = new URLSearchParams(); formData.append('min', minInput.value); formData.append('max', maxInput.value); if (parseInt(minInput.value) >= parseInt(maxInput.value)) { msgFeedback.style.color = '#e74c3c'; msgFeedback.textContent = 'O nível mínimo deve ser menor que o máximo.'; setTimeout(() => { msgFeedback.textContent = ''; }, 3000); return; } try { const response = await fetch('/api/limites', { method: 'POST', headers: { 'Content-Type': 'application/x-www-form-urlencoded' }, body: formData.toString() }); if (response.ok) { msgFeedback.style.color = '#27ae60'; msgFeedback.textContent = 'Limites atualizados!'; await fetchData(); } else { throw new Error('Falha ao enviar limites'); } } catch (error) { console.error('Erro ao enviar formulário:', error); msgFeedback.style.color = '#e74c3c'; msgFeedback.textContent = 'Erro ao enviar dados.'; } setTimeout(() => { msgFeedback.textContent = ''; }, 3000); }); setInterval(fetchData, 2000); fetchData();</script>"
-"</body>"
-"</html>";
+ "<!DOCTYPE html>"
+    "<html lang=\"pt-br\">"
+    "<head>"
+    "<meta charset=\"UTF-8\">"
+    "<meta name=\"viewport\" content=\"width=device-width, initial-scale=1.0\">"
+    "<title>Controle de Nível</title>"
+    "<style>"
+    "*{margin:0;padding:0;box-sizing:border-box}"
+    "body{font-family:system-ui,-apple-system,sans-serif;background:linear-gradient(135deg,#667eea 0%,#764ba2 100%);color:#fff;min-height:100vh;display:flex;align-items:center;justify-content:center;padding:20px}"
+    ".container{background:rgba(255,255,255,0.1);backdrop-filter:blur(20px);border-radius:20px;padding:30px;width:100%;max-width:400px;box-shadow:0 8px 32px rgba(0,0,0,0.3);border:1px solid rgba(255,255,255,0.2)}"
+    ".title{text-align:center;font-size:1.8rem;margin-bottom:30px;font-weight:300}"
+    ".tank{position:relative;width:100%;height:200px;background:rgba(255,255,255,0.1);border-radius:15px;overflow:hidden;margin-bottom:20px;border:2px solid rgba(255,255,255,0.2)}"
+    ".water{position:absolute;bottom:0;width:100%;background:linear-gradient(180deg,#00d4ff,#0099cc);transition:height 0.8s cubic-bezier(0.4,0,0.2,1);border-radius:0 0 13px 13px}"
+    ".level-text{position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);font-size:2.5rem;font-weight:bold;text-shadow:0 2px 10px rgba(0,0,0,0.5);z-index:10;}"
+    ".limit{position:absolute;width:100%;height:2px;background:#ff6b6b;left:0;z-index:5;transition:bottom 0.8s ease}"
+    ".limit::after{content:attr(data-label);position:absolute;right:5px;top:-10px;transform:translateY(-50%);font-size:0.8rem;font-weight:bold;color:#ff6b6b;text-shadow:0 1px 3px rgba(0,0,0,0.5)}"
+    ".status{text-align:center;padding:15px;border-radius:10p;margin-bottom:25px;font-weight:bold;font-size:1.1rem;transition:all 0.3s ease;background:rgba(255,255,255,0.1);backdrop-filter:blur(10px);border:2px solid rgba(255,255,255,0.2)}"
+    ".on{background:rgba(46,204,113,0.25);border:2px solid #2ecc71;box-shadow:0 0 20px rgba(46,204,113,0.3)}"
+    ".off{background:rgba(231,76,60,0.25);border:2px solid #e74c3c;box-shadow:0 0 20px rgba(231,76,60,0.3)}"
+    ".form{display:flex;flex-direction:column;gap:20px;background:rgba(255,255,255,0.1);backdrop-filter:blur(10px);border-radius:15px;padding:20px;border:1px solid rgba(255,255,255,0.2)}"
+    ".input-group{display:flex;justify-content:space-between;align-items:center;padding:5px 0}"
+    ".input-group label{font-size:1rem;font-weight:500;text-shadow:0 1px 3px rgba(0,0,0,0.3)}"
+    ".input-group input{width:70px;padding:8px 12px;border:none;border-radius:8px;background:rgba(255,255,255,0.2);color:#fff;text-align:center;font-size:1rem;backdrop-filter:blur(10px);border:1px solid rgba(255,255,255,0.3);transition:all 0.3s ease}"
+    ".input-group input:focus{outline:none;background:rgba(255,255,255,0.3);border-color:rgba(255,255,255,0.5);box-shadow:0 0 15px rgba(255,255,255,0.2)}"
+    ".input-group input::placeholder{color:rgba(255,255,255,0.7)}"
+    ".btn{width:100%;padding:12px;border:none;border-radius:10px;background:linear-gradient(45deg,#ff6b6b,#ee5a52);color:#fff;font-size:1rem;font-weight:bold;cursor:pointer;transition:transform 0.2s,box-shadow 0.2s}"
+    ".btn:hover{transform:translateY(-2px);box-shadow:0 6px 20px rgba(0,0,0,0.3)}"
+    ".btn:active{transform:translateY(0)}"
+    ".feedback{text-align:center;margin-top:15px;font-weight:bold;height:20px;transition:opacity 0.3s}"
+    "@media (max-width:480px){"
+    ".container{padding:20px;margin:10px}"
+    ".title{font-size:1.5rem}"
+    ".level-text{font-size:2rem}"
+    ".tank{height:150px}"
+    "}"
+    "</style>"
+    "</head>"
+    "<body>"
+    "<div class=\"container\">"
+    "<h1 class=\"title\">💧 Controle de Nível</h1>"
+    "<div class=\"tank\">"
+    "<div class=\"level-text\" id=\"level\" style='text-align:center;'>--%</div>"
+    "<div class=\"water\" id=\"water\"></div>"
+    "<div class=\"limit\" id=\"max-limit\" data-label=\"MAX: --%\"></div>"
+    "<div class=\"limit\" id=\"min-limit\" data-label=\"MIN: --%\"></div>"
+    "</div>"
+    "<div class=\"status off\" id=\"pump-status\" style='text-align: center;'>Conectando...</div>"
+    "<form class=\"form\" id=\"limits-form\">"
+    "<div class=\"input-group\">"
+    "<label>Nível Mínimo (%):</label>"
+    "<input type=\"number\" id=\"min-input\" min=\"0\" max=\"100\" required>"
+    "</div>"
+    "<div class=\"input-group\">"
+    "<label>Nível Máximo (%):</label>"
+    "<input type=\"number\" id=\"max-input\" min=\"0\" max=\"100\" required>"
+    "</div>"
+    "<button type=\"submit\" class=\"btn\">Atualizar Limites</button>"
+    "</form>"
+    "<div class=\"feedback\" id=\"feedback\"></div>"
+    "</div>"
+    "<script>"
+    "const water=document.getElementById('water');"
+    "const levelText=document.getElementById('level');"
+    "const pumpStatus=document.getElementById('pump-status');"
+    "const maxLimit=document.getElementById('max-limit');"
+    "const minLimit=document.getElementById('min-limit');"
+    "const minInput=document.getElementById('min-input');"
+    "const maxInput=document.getElementById('max-input');"
+    "const feedback=document.getElementById('feedback');"
+    "const form=document.getElementById('limits-form');"
+    "async function fetchData(){"
+    "try{"
+    "const res=await fetch('/api/data');"
+    "if(!res.ok)throw new Error('Network error');"
+    "const data=await res.json();"
+    "updateUI(data);"
+    "}catch(err){"
+    "console.error('Fetch failed:',err);"
+    "pumpStatus.textContent='Erro de Conexão';"
+    "pumpStatus.className='status off';"
+    "}"
+    "}"
+    "function updateUI(data){"
+    "water.style.height=data.nivel_atual+'%';"
+    "levelText.textContent=data.nivel_atual+'%';"
+    "pumpStatus.textContent=data.estado_bomba?'Bomba Ligada':'Bomba Desligada';"
+    "pumpStatus.className='status '+(data.estado_bomba?'on':'off');"
+    "maxLimit.style.bottom=data.max+'%';"
+    "minLimit.style.bottom=data.min+'%';"
+    "maxLimit.setAttribute('data-label','MAX: '+data.max+'%');"
+    "minLimit.setAttribute('data-label','MIN: '+data.min+'%');"
+    "if(document.activeElement!==minInput)minInput.value=data.min;"
+    "if(document.activeElement!==maxInput)maxInput.value=data.max;"
+    "}"
+    "form.addEventListener('submit',async(e)=>{"
+    "e.preventDefault();"
+    "const minVal=parseInt(minInput.value);"
+    "const maxVal=parseInt(maxInput.value);"
+    "if(minVal>=maxVal){"
+    "showFeedback('O nível mínimo deve ser menor que o máximo.','#e74c3c');"
+    "return;"
+    "}"
+    "try{"
+    "const res=await fetch('/api/limites',{"
+    "method:'POST',"
+    "headers:{'Content-Type':'application/x-www-form-urlencoded'},"
+    "body:`min=${minVal}&max=${maxVal}`"
+    "});"
+    "if(res.ok){"
+    "showFeedback('Limites atualizados!','#2ecc71');"
+    "await fetchData();"
+    "}else{"
+    "throw new Error('Failed to update');"
+    "}"
+    "}catch(err){"
+    "console.error('Update failed:',err);"
+    "showFeedback('Erro ao enviar dados.','#e74c3c');"
+    "}"
+    "});"
+    "function showFeedback(msg,color){"
+    "feedback.textContent=msg;"
+    "feedback.style.color=color;"
+    "feedback.style.opacity='1';"
+    "setTimeout(()=>{"
+    "feedback.style.opacity='0';"
+    "setTimeout(()=>feedback.textContent='',300);"
+    "},3000);"
+    "}"
+    "setInterval(fetchData,2000);"
+    "fetchData();"
+    "</script>"
+    "</body>"
+    "</html>";
 
 struct http_state
 {
@@ -102,57 +222,6 @@ static err_t http_recv(void *arg, struct tcp_pcb *tpcb, struct pbuf *p, err_t er
     }
     hs->sent = 0;
 
-    // if (strstr(req, "GET /led/on"))
-    // {
-    //     gpio_put(LED_PIN, 1);
-    //     const char *txt = "Ligado";
-    //     hs->len = snprintf(hs->response, sizeof(hs->response),
-    //                        "HTTP/1.1 200 OK\r\n"
-    //                        "Content-Type: text/plain\r\n"
-    //                        "Content-Length: %d\r\n"
-    //                        "Connection: close\r\n"
-    //                        "\r\n"
-    //                        "%s",
-    //                        (int)strlen(txt), txt);
-    // }
-    // else if (strstr(req, "GET /led/off"))
-    // {
-    //     gpio_put(LED_PIN, 0);
-    //     const char *txt = "Desligado";
-    //     hs->len = snprintf(hs->response, sizeof(hs->response),
-    //                        "HTTP/1.1 200 OK\r\n"
-    //                        "Content-Type: text/plain\r\n"
-    //                        "Content-Length: %d\r\n"
-    //                        "Connection: close\r\n"
-    //                        "\r\n"
-    //                        "%s",
-    //                        (int)strlen(txt), txt);
-    // }
-    // else if (strstr(req, "GET /estado"))
-    // {
-    //     adc_select_input(0);
-    //     uint16_t x = adc_read();
-    //     adc_select_input(1);
-    //     uint16_t y = adc_read();
-    //     int botao = !gpio_get(BOTAO_A);
-    //     int joy = !gpio_get(BOTAO_JOY);
-
-    //     char json_payload[96];
-    //     int json_len = snprintf(json_payload, sizeof(json_payload),
-    //                             "{\"led\":%d,\"x\":%d,\"y\":%d,\"botao\":%d,\"joy\":%d}\r\n",
-    //                             gpio_get(LED_PIN), x, y, botao, joy);
-
-    //     printf("[DEBUG] JSON: %s\n", json_payload);
-
-    //     hs->len = snprintf(hs->response, sizeof(hs->response),
-    //                        "HTTP/1.1 200 OK\r\n"
-    //                        "Content-Type: application/json\r\n"
-    //                        "Content-Length: %d\r\n"
-    //                        "Connection: close\r\n"
-    //                        "\r\n"
-    //                        "%s",
-    //                        json_len, json_payload);
-    // }
     if (strstr(req, "GET /api/data")) {
         char json_payload[128];
         int json_len = snprintf(json_payload, sizeof(json_payload),
