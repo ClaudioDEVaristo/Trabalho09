@@ -26,6 +26,7 @@
 #define endereco 0x3C
 
 #define POTENCIOMETRO_PIN 28
+#define ADC_MAX 900 // Valor máximo do ADC para o potenciômetro
 
 typedef struct {
     uint8_t min;
@@ -131,7 +132,7 @@ int main(){
 
         printf("ADC Value: %d\n", adc_value);
 
-        nv.nivel_atual = (adc_value * 100) / 4095; // Converte o valor do ADC para porcentagem
+        nv.nivel_atual = (adc_value * 100) / ADC_MAX; // Converte o valor do ADC para porcentagem
 
         sprintf(str_x, "Nivel Min: %d%%", nv.min);    
         sprintf(str_y, "Nivel Max: %d%%", nv.max);    
