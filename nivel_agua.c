@@ -120,9 +120,9 @@ int main(){
     while (true) {
         cyw43_arch_poll();
 
-        sprintf(str_x, "Nivel Min: %d", nv.min);    
-        sprintf(str_y, "Nivel Max: %d", nv.max);    
-        sprintf(str_pb, "Agua: %d", nv.nivel_atual);
+        sprintf(str_x, "Nivel Min: %d%%", nv.min);    
+        sprintf(str_y, "Nivel Max: %d%%", nv.max);    
+        sprintf(str_pb, "Agua: %d%%", nv.nivel_atual);
 
         ssd1306_fill(&ssd, !cor);               
         ssd1306_rect(&ssd, 0, 0, 127, 63, cor, !cor);
