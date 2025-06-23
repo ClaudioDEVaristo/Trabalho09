@@ -7,6 +7,8 @@
 #include "buzzer.h"
 #include "lwipopts.h"
 #include <string.h>
+#include "lwip/tcp.h"
+#include <stdlib.h>
 
 #define botao_a 5
 #define botao_b 6
@@ -31,11 +33,226 @@ typedef struct {
 
 nivel_agua nv = {20, 80, false, 30, 0};
 
+const char HTML_BODY[] =
+    "<!DOCTYPE html>"
+"<html lang='pt-br'>"
+"<head>"
+"<meta charset='UTF-8'>"
+"<meta name='viewport' content='width=device-width, initial-scale=1.0'>"
+"<title>Controle de Nível</title>"
+"<style>:root{--bg-color:#1a1a2e;--primary-color:#16213e;--secondary-color:#0f3460;--font-color:#e94560;--text-color:#dcdcdc;--water-color:#3498db;} body{font-family:-apple-system,BlinkMacSystemFont,'SegoeUI',Roboto,Oxygen,Ubuntu,Cantarell,'OpenSans','HelveticaNeue',sans-serif;background-color:var(--bg-color);color:var(--text-color);margin:0;padding:20px;display:flex;justify-content:center;align-items:center;min-height:100vh;} .container{width:100%;max-width:500px;background-color:var(--primary-color);padding:25px;border-radius:15px;box-shadow:010px30pxrgba(0,0,0,0.4);text-align:center;} h1{color:var(--font-color);margin-bottom:20px;} .tanque-container{background-color:var(--secondary-color);border-radius:5px;margin-bottom:20px;position:relative;height:200px;} .tanque-nivel{background-color:var(--water-color);height:100%;width:100%;position:absolute;bottom:0;left:0;border-radius:5px;transform-origin:bottom;transition:transform 0.5s ease-out;} .nivel-texto{position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);font-size:3em;font-weight:bold;color:white;text-shadow:2px2px5pxrgba(0,0,0,0.5);z-index:20;} .limite{position:absolute;left:0;width:100%;height:0;border-top:2pxdashedvar(--font-color);z-index:10;transition:bottom 0.5 sease-out;} .limite span{position:absolute;top:4px;right:5px;font-size:0.9em;font-weight:bold;color:var(--font-color);text-shadow:1px1px3pxvar(--bg-color);} .status-bomba{font-size:1.2em;padding:10px;border-radius:5px;margin-bottom:20px;font-weight:bold;transition:all 0.3s;} .ligada{background-color:#27ae60;} .desligada{background-color:#c0392b;} form{display:flex;flex-direction:column;gap:15px;} .form-group{display:flex;justify-content:space-between;align-items:center;} label{font-size:1.1em;} input[type='number']{width:80px;padding:8px;border-radius:5px;border:none;background-color:var(--secondary-color);color:var(--text-color);font-size:1.1em;text-align:center;} button{padding:12px;border:none;border-radius:5px;background-color:var(--font-color);color:white;font-size:1.1em;font-weight:bold;cursor:pointer;transition:background-color 0.2s;} button:hover{background-color:#d63447;} #msg-feedback{margin-top:10px;font-weight:bold;color:#27ae60;height:20px;transition:opacity 0.5s;}</style>"
+"</head>"
+"<body>"
+"<div class=container><h1>💧 Controle de Nível</h1><div class=tanque-container><div class=nivel-texto id=nivel-atual-texto>--%</div><div class=tanque-nivel id=nivel-visual></div><div class=limite id=limite-max><span id=limite-max-texto>MAX: --%</span></div><div class=limite id=limite-min><span id=limite-min-texto>MIN: --%</span></div></div><div class=status-bomba id=status-bomba>Conectando...</div><form id=form-limites><div class=form-group><label for=limite_min_input>Nível Mínimo (%):</label> <input id=limite_min_input max=100 min=0 name=limite_min required type=number></div><div class=form-group><label for=limite_max_input>Nível Máximo (%):</label> <input id=limite_max_input max=100 min=0 name=limite_max required type=number></div><button type=submit>Atualizar Limites</button></form><div id=msg-feedback></div></div>"
+"<script>const nivelVisual = document.getElementById('nivel-visual'); const nivelTexto = document.getElementById('nivel-atual-texto'); const statusBomba = document.getElementById('status-bomba'); const formLimites = document.getElementById('form-limites'); const msgFeedback = document.getElementById('msg-feedback'); const limiteMinTexto = document.getElementById('limite-min-texto'); const limiteMaxTexto = document.getElementById('limite-max-texto'); const limiteMinLine = document.getElementById('limite-min'); const limiteMaxLine = document.getElementById('limite-max'); const minInput = document.getElementById('limite_min_input'); const maxInput = document.getElementById('limite_max_input'); async function fetchData() { try { const response = await fetch('/api/data'); if (!response.ok) { throw new Error('Erro de rede'); } const data = await response.json(); atualizarUI(data); } catch (error) { console.error('Falha ao buscar dados:', error); statusBomba.textContent = 'Erro de Conexão'; statusBomba.className = 'status-bomba desligada'; } } function atualizarUI(data) { nivelVisual.style.transform = 'scaleY(' + data.nivel_atual / 100 + ')'; nivelTexto.textContent = data.nivel_atual + '%%'; statusBomba.textContent = data.estado_bomba ? 'Bomba Ligada' : 'Bomba Desligada'; statusBomba.className = 'status-bomba ' + (data.estado_bomba ? 'ligada' : 'desligada'); limiteMinTexto.textContent = 'MIN: ' + data.min + '%%'; limiteMaxTexto.textContent = 'MAX: ' + data.max + '%%'; limiteMinLine.style.bottom = data.min + '%%'; limiteMaxLine.style.bottom = data.max + '%%'; if(document.activeElement !== minInput) minInput.value = data.min; if(document.activeElement !== maxInput) maxInput.value = data.max; } formLimites.addEventListener('submit', async (e) => { e.preventDefault(); const formData = new URLSearchParams(); formData.append('min', minInput.value); formData.append('max', maxInput.value); if (parseInt(minInput.value) >= parseInt(maxInput.value)) { msgFeedback.style.color = '#e74c3c'; msgFeedback.textContent = 'O nível mínimo deve ser menor que o máximo.'; setTimeout(() => { msgFeedback.textContent = ''; }, 3000); return; } try { const response = await fetch('/api/limites', { method: 'POST', headers: { 'Content-Type': 'application/x-www-form-urlencoded' }, body: formData.toString() }); if (response.ok) { msgFeedback.style.color = '#27ae60'; msgFeedback.textContent = 'Limites atualizados!'; await fetchData(); } else { throw new Error('Falha ao enviar limites'); } } catch (error) { console.error('Erro ao enviar formulário:', error); msgFeedback.style.color = '#e74c3c'; msgFeedback.textContent = 'Erro ao enviar dados.'; } setTimeout(() => { msgFeedback.textContent = ''; }, 3000); }); setInterval(fetchData, 2000); fetchData();</script>"
+"</body>"
+"</html>";
+
+struct http_state
+{
+    char response[8192];
+    size_t len;
+    size_t sent;
+};
+
 void init_bot(void);
 void gpio_irq_handler(uint gpio, uint32_t events);
 int64_t botao_pressionado(alarm_id_t, void *user_data);
 uint8_t xcenter_pos(char *text);
 
+
+static err_t http_sent(void *arg, struct tcp_pcb *tpcb, u16_t len)
+{
+    struct http_state *hs = (struct http_state *)arg;
+    hs->sent += len;
+
+    if (hs->sent >= hs->len) {
+        tcp_close(tpcb);
+        free(hs);
+        return ERR_OK;
+    }
+
+    size_t remaining = hs->len - hs->sent;
+    size_t chunk = remaining > 1024 ? 1024 : remaining;
+    err_t err = tcp_write(tpcb, hs->response + hs->sent, chunk, TCP_WRITE_FLAG_COPY);
+    if (err == ERR_OK) {
+        tcp_output(tpcb);
+    } else {
+        printf("Erro ao enviar chunk restante: %d\n", err);
+    }
+
+    return ERR_OK;
+}
+
+static err_t http_recv(void *arg, struct tcp_pcb *tpcb, struct pbuf *p, err_t err)
+{
+    if (!p)
+    {
+        tcp_close(tpcb);
+        return ERR_OK;
+    }
+
+    char *req = (char *)p->payload;
+    struct http_state *hs = malloc(sizeof(struct http_state));
+    if (!hs)
+    {
+        pbuf_free(p);
+        tcp_close(tpcb);
+        return ERR_MEM;
+    }
+    hs->sent = 0;
+
+    // if (strstr(req, "GET /led/on"))
+    // {
+    //     gpio_put(LED_PIN, 1);
+    //     const char *txt = "Ligado";
+    //     hs->len = snprintf(hs->response, sizeof(hs->response),
+    //                        "HTTP/1.1 200 OK\r\n"
+    //                        "Content-Type: text/plain\r\n"
+    //                        "Content-Length: %d\r\n"
+    //                        "Connection: close\r\n"
+    //                        "\r\n"
+    //                        "%s",
+    //                        (int)strlen(txt), txt);
+    // }
+    // else if (strstr(req, "GET /led/off"))
+    // {
+    //     gpio_put(LED_PIN, 0);
+    //     const char *txt = "Desligado";
+    //     hs->len = snprintf(hs->response, sizeof(hs->response),
+    //                        "HTTP/1.1 200 OK\r\n"
+    //                        "Content-Type: text/plain\r\n"
+    //                        "Content-Length: %d\r\n"
+    //                        "Connection: close\r\n"
+    //                        "\r\n"
+    //                        "%s",
+    //                        (int)strlen(txt), txt);
+    // }
+    // else if (strstr(req, "GET /estado"))
+    // {
+    //     adc_select_input(0);
+    //     uint16_t x = adc_read();
+    //     adc_select_input(1);
+    //     uint16_t y = adc_read();
+    //     int botao = !gpio_get(BOTAO_A);
+    //     int joy = !gpio_get(BOTAO_JOY);
+
+    //     char json_payload[96];
+    //     int json_len = snprintf(json_payload, sizeof(json_payload),
+    //                             "{\"led\":%d,\"x\":%d,\"y\":%d,\"botao\":%d,\"joy\":%d}\r\n",
+    //                             gpio_get(LED_PIN), x, y, botao, joy);
+
+    //     printf("[DEBUG] JSON: %s\n", json_payload);
+
+    //     hs->len = snprintf(hs->response, sizeof(hs->response),
+    //                        "HTTP/1.1 200 OK\r\n"
+    //                        "Content-Type: application/json\r\n"
+    //                        "Content-Length: %d\r\n"
+    //                        "Connection: close\r\n"
+    //                        "\r\n"
+    //                        "%s",
+    //                        json_len, json_payload);
+    // }
+    if (strstr(req, "GET /api/data")) {
+        char json_payload[128];
+        int json_len = snprintf(json_payload, sizeof(json_payload),
+            "{\"min\":%d,\"max\":%d,\"nivel_atual\":%d,\"estado_bomba\":%s}\r\n",
+            nv.min, nv.max, nv.nivel_atual, nv.estado_bomba ? "true" : "false");
+        hs->len = snprintf(hs->response, sizeof(hs->response),
+            "HTTP/1.1 200 OK\r\n"
+            "Content-Type: application/json\r\n"
+            "Content-Length: %d\r\n"
+            "Connection: close\r\n"
+            "\r\n"
+            "%s",
+            json_len, json_payload);
+
+    }
+    else if (strstr(req, "POST /api/limites"))
+    {
+        char *min_str = strstr(req, "min=");
+        char *max_str = strstr(req, "max=");
+        if (min_str && max_str)
+        {
+            min_str += 4; // Pular "min="
+            max_str += 4; // Pular "max="
+
+            nv.min = atoi(min_str);
+            nv.max = atoi(max_str);
+
+            if (nv.min >= nv.max)
+            {
+                hs->len = snprintf(hs->response, sizeof(hs->response),
+                    "HTTP/1.1 400 Bad Request\r\n"
+                    "Content-Type: text/plain\r\n"
+                    "Content-Length: 0\r\n"
+                    "Connection: close\r\n"
+                    "\r\n");
+            }
+        }
+    }
+    else
+    {
+       size_t html_len = strlen(HTML_BODY);
+
+        int hdr_len = snprintf(hs->response, sizeof(hs->response),
+            "HTTP/1.1 200 OK\r\n"
+            "Content-Type: text/html\r\n"
+            "Content-Length: %zu\r\n"
+            "Connection: close\r\n"
+            "\r\n", html_len);
+
+        memcpy(hs->response + hdr_len, HTML_BODY, html_len);
+
+        hs->len = hdr_len + html_len;
+        hs->sent = 0;
+
+        tcp_arg(tpcb, hs);
+        tcp_sent(tpcb, http_sent); // chama http_sent() após cada envio
+
+        // envia apenas o primeiro pedaço (até 1024 bytes)
+        size_t chunk = hs->len > 1024 ? 1024 : hs->len;
+        tcp_write(tpcb, hs->response, chunk, TCP_WRITE_FLAG_COPY);
+        tcp_output(tpcb);
+        hs->sent = chunk;
+
+        pbuf_free(p);
+        return ERR_OK;
+    }
+
+    tcp_arg(tpcb, hs);
+    tcp_sent(tpcb, http_sent);
+
+    tcp_write(tpcb, hs->response, hs->len, TCP_WRITE_FLAG_COPY);
+    tcp_output(tpcb);
+
+    pbuf_free(p);
+    return ERR_OK;
+}
+
+static err_t connection_callback(void *arg, struct tcp_pcb *newpcb, err_t err)
+{
+    tcp_recv(newpcb, http_recv);
+    return ERR_OK;
+}
+
+static void start_http_server(void)
+{
+    struct tcp_pcb *pcb = tcp_new();
+    if (!pcb)
+    {
+        printf("Erro ao criar PCB TCP\n");
+        return;
+    }
+    if (tcp_bind(pcb, IP_ADDR_ANY, 80) != ERR_OK)
+    {
+        printf("Erro ao ligar o servidor na porta 80\n");
+        return;
+    }
+    pcb = tcp_listen(pcb);
+    tcp_accept(pcb, connection_callback);
+    printf("Servidor HTTP rodando na porta 80...\n");
+}
 
 int main(){
     stdio_init_all();
@@ -94,6 +311,7 @@ int main(){
     ssd1306_draw_string(&ssd, ip_str, 0, 10);
     ssd1306_send_data(&ssd);
 
+    start_http_server();
     char str_x[14];
     char str_y[14];
     char str_pb[14];
@@ -103,6 +321,8 @@ int main(){
     strcat(ip_text, ip_str);
 
     while (true) {
+        cyw43_arch_poll();
+
         sprintf(str_x, "Nivel Min: %d", nv.min);    
         sprintf(str_y, "Nivel Max: %d", nv.max);    
         sprintf(str_pb, "Agua: %d", nv.nivel_atual);
