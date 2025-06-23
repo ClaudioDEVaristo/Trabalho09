@@ -23,7 +23,11 @@
 #define I2C_PORT_DISP i2c1
 #define I2C_SDA_DISP 14
 #define I2C_SCL_DISP 15
+#define rele 17
 #define endereco 0x3C
+
+#define valor_min 20
+#define valor_max 80
 
 #define POTENCIOMETRO_PIN 28
 #define ADC_MAX 900 // Valor máximo do ADC para o potenciômetro
@@ -36,10 +40,9 @@ typedef struct {
     absolute_time_t alarm_a;
 } nivel_agua;
 
-nivel_agua nv = {20, 80, false, 30, 0};
+nivel_agua nv = {valor_min, valor_max, false, 30, 0};
 
-struct http_state
-{
+struct http_state{
     char response[8192];
     size_t len;
     size_t sent;
@@ -89,8 +92,7 @@ int main(){
     ssd1306_draw_string(&ssd, aguarde, xcenter_pos(aguarde), 30);    
     ssd1306_send_data(&ssd);
 
-    if (cyw43_arch_init())
-    {
+    if (cyw43_arch_init()){
         ssd1306_fill(&ssd, false);
         ssd1306_draw_string(&ssd, "WiFi => FALHA", xcenter_pos("WiFi => FALHA"), 0);
         ssd1306_send_data(&ssd);
@@ -98,8 +100,7 @@ int main(){
     }
 
     cyw43_arch_enable_sta_mode();
-    if (cyw43_arch_wifi_connect_timeout_ms(WIFI_SSID, WIFI_PASSWORD, CYW43_AUTH_WPA2_AES_PSK, 10000))
-    {
+    if (cyw43_arch_wifi_connect_timeout_ms(WIFI_SSID, WIFI_PASSWORD, CYW43_AUTH_WPA2_AES_PSK, 10000)){
         ssd1306_fill(&ssd, false);
         ssd1306_draw_string(&ssd, "WiFi => ERRO", 0, 0);
         ssd1306_send_data(&ssd);
@@ -130,7 +131,7 @@ int main(){
         adc_select_input(2);
         uint16_t adc_value = adc_read();
 
-        printf("ADC Value: %d\n", adc_value);
+         // printf("ADC Value: %d\n", adc_value); // Para depuração, pode ser removido.
 
         nv.nivel_atual = (adc_value * 100) / ADC_MAX; // Converte o valor do ADC para porcentagem
 
@@ -150,6 +151,7 @@ int main(){
             printf("Bomba desligada, nivel maximo atingido.\n");
         } else if (nv.nivel_atual < nv.min) {
             printf("Bomba ligada, nivel minimo atingido.\n");
+            buzzer_play(BUZZER_PIN, 1, 700, 1000);
             nv.estado_bomba = true;
         }
 
@@ -160,17 +162,13 @@ int main(){
         }
 
         gpio_put(green_led, nv.estado_bomba); // Liga/desliga o LED verde conforme o estado da bomba
+        gpio_put(rele, nv.estado_bomba); // Liga/desliga o relé conforme o estado da bomba
 
         ssd1306_hline(&ssd, 0, 127, 40, cor);
-
         ssd1306_draw_string(&ssd, ip_text, xcenter_pos(ip_text), 42);
-
         ssd1306_draw_string(&ssd, "EmbarcaTech", xcenter_pos("EmbarcaTech"), 50); // Desenha o IP
-
         ssd1306_send_data(&ssd); 
-
         set_pattern(pio0, 0, 0, "azul");
-
         sleep_ms(1000);
     }
 
@@ -191,12 +189,22 @@ void init_bot(void){
 }
 
 
-/* Não houve necessidade de utilizar o debounce no botão A, pois o mesmo é tratado com um alarme de 2 segundos para a sua real ativação.
-   O botão B foi tratado com um debounce de 300ms.
-   Ao ser pressionado, o botão A ativa o alarme e se soltar antes dos 2 segundos, o alarme é desativado.
-   **** Botão A: Reseta os valores limítrofes da bomba. (Esses valores podem ser configurados)
-   **** Botao B: Ativa e desativa a bomba manualmente. (É só associar a ativação com a booleana)
-   E por fim, os printf são só para verificação de funcionamento... pode remover ao finalizar.  */
+/**
+ * Manipulador de interrupção GPIO.
+ *
+ * Esta função é chamada quando ocorre uma interrupção em um dos pinos GPIO monitorados.
+ *
+ * Parâmetros:
+ *   @param gpio   Número do pino GPIO que gerou a interrupção.
+ *   @param events Máscara de eventos que indica o tipo de borda (subida/descida) que ocorreu.
+ *
+ * Funcionamento:
+ * - Para o botão 'A' (botao_a):
+ *   - Se o botão não estava pressionado (estado_a == false), agenda um alarme para 2 segundos e marca o estado como pressionado.
+ *   - Se o botão estava pressionado e ocorreu uma borda de subida, cancela o alarme e marca o estado como não pressionado.
+ * - Para o botão 'B' (botao_b):
+ *   - Se passaram mais de 300 ms desde o último acionamento, alterna o estado da bomba (nv.estado_bomba) e atualiza o tempo do último acionamento.
+ */
 void gpio_irq_handler(uint gpio, uint32_t events) {
     uint64_t current_time = to_ms_since_boot(get_absolute_time());
     static uint64_t last_time = 0;
@@ -209,23 +217,21 @@ void gpio_irq_handler(uint gpio, uint32_t events) {
                 estado_a = false;
             } else if (gpio == botao_b && (current_time - last_time > 300)) {
                 nv.estado_bomba = !nv.estado_bomba;
-                gpio_put(green_led, nv.estado_bomba);
                 last_time = current_time;
             }
 }
-
 
 /**
  * @brief Função chamada após 2 segundos de pressionamento do botão A.
  */
 int64_t botao_pressionado(alarm_id_t, void *user_data) {
     if(gpio_get(botao_a) == 0){
-        nv.min = 20;
-        nv.max = 80;
+        nv.estado_bomba = false;
+        nv.min = valor_min;
+        nv.max = valor_max;
     }
     return 0;
 }
-
 
 /**
  * @brief Calcula a posição centralizada do texto no display.
@@ -255,8 +261,7 @@ uint8_t xcenter_pos(char* text) {
  * @note A função libera automaticamente a memória alocada para http_state
  *       quando a transmissão é concluída.
  */
-static err_t http_sent(void *arg, struct tcp_pcb *tpcb, u16_t len)
-{
+static err_t http_sent(void *arg, struct tcp_pcb *tpcb, u16_t len){
     struct http_state *hs = (struct http_state *)arg;
     hs->sent += len;
 
@@ -291,18 +296,15 @@ static err_t http_sent(void *arg, struct tcp_pcb *tpcb, u16_t len)
  * @param err Código de erro recebido do lwIP
  * @return err_t ERR_OK se processado com sucesso, ou outro código de erro
  */
-static err_t http_recv(void *arg, struct tcp_pcb *tpcb, struct pbuf *p, err_t err)
-{
-    if (!p)
-    {
+static err_t http_recv(void *arg, struct tcp_pcb *tpcb, struct pbuf *p, err_t err){
+    if (!p){
         tcp_close(tpcb);
         return ERR_OK;
     }
 
     char *req = (char *)p->payload;
     struct http_state *hs = malloc(sizeof(struct http_state));
-    if (!hs)
-    {
+    if (!hs){
         pbuf_free(p);
         tcp_close(tpcb);
         return ERR_MEM;
@@ -323,21 +325,17 @@ static err_t http_recv(void *arg, struct tcp_pcb *tpcb, struct pbuf *p, err_t er
             "%s",
             json_len, json_payload);
 
-    }
-    else if (strstr(req, "POST /api/limites"))
-    {
+    } else if (strstr(req, "POST /api/limites")){
         char *min_str = strstr(req, "min=");
         char *max_str = strstr(req, "max=");
-        if (min_str && max_str)
-        {
+        if (min_str && max_str){
             min_str += 4; // Pular "min="
             max_str += 4; // Pular "max="
 
             nv.min = atoi(min_str);
             nv.max = atoi(max_str);
 
-            if (nv.min >= nv.max)
-            {
+            if (nv.min >= nv.max){
                 hs->len = snprintf(hs->response, sizeof(hs->response),
                     "HTTP/1.1 400 Bad Request\r\n"
                     "Content-Type: text/plain\r\n"
@@ -346,9 +344,7 @@ static err_t http_recv(void *arg, struct tcp_pcb *tpcb, struct pbuf *p, err_t er
                     "\r\n");
             }
         }
-    }
-    else
-    {
+    } else {
        size_t html_len = strlen(HTML_BODY);
 
         int hdr_len = snprintf(hs->response, sizeof(hs->response),
@@ -401,8 +397,7 @@ static err_t http_recv(void *arg, struct tcp_pcb *tpcb, struct pbuf *p, err_t er
  *         - ERR_OK se a conexão foi processada com sucesso
  *         - Outros códigos de erro em caso de falha
  */
-static err_t connection_callback(void *arg, struct tcp_pcb *newpcb, err_t err)
-{
+static err_t connection_callback(void *arg, struct tcp_pcb *newpcb, err_t err){
     tcp_recv(newpcb, http_recv);
     return ERR_OK;
 }
@@ -421,16 +416,13 @@ static err_t connection_callback(void *arg, struct tcp_pcb *newpcb, err_t err)
  * 
  * @return Nenhum
  */
-static void start_http_server(void)
-{
+static void start_http_server(void){
     struct tcp_pcb *pcb = tcp_new();
-    if (!pcb)
-    {
+    if (!pcb){
         printf("Erro ao criar PCB TCP\n");
         return;
     }
-    if (tcp_bind(pcb, IP_ADDR_ANY, 80) != ERR_OK)
-    {
+    if (tcp_bind(pcb, IP_ADDR_ANY, 80) != ERR_OK){
         printf("Erro ao ligar o servidor na porta 80\n");
         return;
     }
