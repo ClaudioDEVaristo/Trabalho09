@@ -197,7 +197,6 @@ void gpio_irq_handler(uint gpio, uint32_t events) {
                 nv.estado_bomba = !nv.estado_bomba;
                 gpio_put(green_led, nv.estado_bomba);
                 last_time = current_time;
-                printf("Botão B pressionado \n");
             }
 }
 
@@ -209,7 +208,6 @@ int64_t botao_pressionado(alarm_id_t, void *user_data) {
     if(gpio_get(botao_a) == 0){
         nv.min = 20;
         nv.max = 80;
-        printf("Botão A pressionado por 2 segundos!\n");
     }
     return 0;
 }
