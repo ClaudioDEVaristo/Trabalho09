@@ -157,11 +157,11 @@ int main(){
 
         if (nv.nivel_atual >= nv.max) {
             nv.estado_bomba = false;
-            buzzer_play(BUZZER_PIN, 3, 1000, 1000);
+            buzzer_play(BUZZER_PIN, 3, 1000, 2000);
             printf("Bomba desligada, nivel maximo atingido.\n");
         } else if (nv.nivel_atual < nv.min) {
             printf("Bomba ligada, nivel minimo atingido.\n");
-            buzzer_play(BUZZER_PIN, 1, 700, 1000);
+            buzzer_play(BUZZER_PIN, 1, 700, 500);
             nv.estado_bomba = true;
         }
 
@@ -175,8 +175,7 @@ int main(){
         gpio_put(rele, !nv.estado_bomba); // Liga/desliga o relé conforme o estado da bomba
 
         ssd1306_hline(&ssd, 0, 127, 40, cor);
-        ssd1306_draw_string(&ssd, ip_text, xcenter_pos(ip_text), 42);
-        ssd1306_draw_string(&ssd, "EmbarcaTech", xcenter_pos("EmbarcaTech"), 50); // Desenha o IP
+        ssd1306_draw_string(&ssd, "EmbarcaTech", xcenter_pos("EmbarcaTech"), 50); 
         ssd1306_send_data(&ssd); 
         set_pattern(pio0, 0, 0, "azul");
         sleep_ms(1000);
