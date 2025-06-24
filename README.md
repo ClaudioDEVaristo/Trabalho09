@@ -80,11 +80,11 @@ Ou utilize a extensão do VSCode e faça uma importação.
 
 ## Autor
 
-Hugo Martins Santana
-Cláudio Evaristo Júnior
-Davi Leão
-Caique de Brito Freitas
-Naylane do Nascimento Ribeiro
+- Hugo Martins Santana
+- Cláudio Evaristo Júnior
+- Davi Leão
+- Caique de Brito Freitas
+- Naylane do Nascimento Ribeiro
 
 ---
 
