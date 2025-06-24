@@ -73,7 +73,8 @@ Conta com botões físicos para reset e controle manual, além de alerta sonoro 
 4. Faça o upload do `.uf2` para a placa via BOOTSEL.  
 5. Conecte todos os periféricos conforme a pinagem.  
 6. Verifique o IP da Placa e utilize-o no navegador.
-Ou utilize a extensão do VSCode e faça uma importação.  
+
+- Ou utilize a extensão do VSCode e faça uma importação.  
 
 ---
 
